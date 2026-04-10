@@ -7,15 +7,18 @@ WAREHOUSE_ID = "76928b72e59d53fa"
 JOB_ID = 1112246778869928
 
 
+# Request model
 class ExecuteRequest(BaseModel):
     execution_id: str
 
 
+# ✅ Health endpoint
 @app.get("/")
 def home():
     return {"message": "Hello, Welcome to Mohit's Org Application 🚀"}
 
 
+# ✅ Execute API
 @app.post("/execute")
 def execute(req: ExecuteRequest):
     from databricks.sdk import WorkspaceClient
@@ -24,11 +27,16 @@ def execute(req: ExecuteRequest):
     w = WorkspaceClient()
     execution_id = req.execution_id
 
+    # 🔒 Basic SQL safety
     safe_execution_id = execution_id.replace("'", "''")
 
+    # ✅ IMPORTANT: set catalog + schema explicitly
     query = f"""
+    USE CATALOG my_catalog;
+    USE SCHEMA my_schema;
+
     SELECT query_file, output_path
-    FROM my_catalog.my_schema.execution_metadata
+    FROM execution_metadata
     WHERE execution_id = '{safe_execution_id}' AND is_active = true
     """
 
@@ -46,25 +54,26 @@ def execute(req: ExecuteRequest):
             time.sleep(1)
             result = w.statement_execution.get_statement(statement.statement_id)
 
-        # 🔹 Step 3: Check status
+        # 🔹 Step 3: Check final status
         if result.status.state != "SUCCEEDED":
             raise HTTPException(
                 status_code=500,
-                detail=f"Query failed: {result.status.state}"
+                detail=f"Query failed: {result.status.error}"
             )
 
-        # 🔹 Step 4: Extract result
+        # 🔹 Step 4: Validate result
         if not result.result or not result.result.data_array:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid execution_id"
             )
 
+        # 🔹 Step 5: Extract values
         row = result.result.data_array[0]
         query_file = row[0]
         output_path = row[1]
 
-        # 🔹 Step 5: Trigger job
+        # 🔹 Step 6: Trigger job
         run = w.jobs.run_now(
             job_id=JOB_ID,
             notebook_params={
@@ -84,6 +93,7 @@ def execute(req: ExecuteRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ✅ Entry point for Databricks Apps
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000)
