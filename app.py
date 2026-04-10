@@ -32,8 +32,8 @@ def execute(req: ExecuteRequest):
 
     # ✅ IMPORTANT: set catalog + schema explicitly
     query = f"""
-    USE CATALOG my_catalog;
-    USE SCHEMA my_schema;
+    USE CATALOG app_catalog;
+    USE SCHEMA app_schema;
 
     SELECT query_file, output_path
     FROM execution_metadata
