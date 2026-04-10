@@ -26,7 +26,7 @@ def execute(req: ExecuteRequest):
 
     safe_execution_id = execution_id.replace("'", "''")
 
-    # ✅ FIX: fully qualified table name (NO USE statements)
+    # ✅ Correct query (fully qualified, no USE)
     query = f"""
     SELECT query_file, output_path
     FROM app_catalog.app_schema.execution_metadata
@@ -34,39 +34,41 @@ def execute(req: ExecuteRequest):
     """
 
     try:
-        # Step 1: Submit query
+        # 🔹 Step 1: Run query
         statement = w.statement_execution.execute_statement(
             warehouse_id=WAREHOUSE_ID,
             statement=query
         )
 
-        # Step 2: Poll until completion
-        result = w.statement_execution.get_statement(statement.statement_id)
-
-        while result.status.state in ["PENDING", "RUNNING"]:
-            time.sleep(1)
+        # 🔹 Step 2: Wait until finished
+        while True:
             result = w.statement_execution.get_statement(statement.statement_id)
+            state = result.status.state
 
-        # Step 3: Check status
-        if result.status.state != "SUCCEEDED":
-            raise HTTPException(
-                status_code=500,
-                detail=f"Query failed: {result.status.error}"
-            )
+            if state == "SUCCEEDED":
+                break
+            elif state in ["FAILED", "CANCELED"]:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Query failed: {state}"
+                )
 
-        # Step 4: Validate result
-        if not result.result or not result.result.data_array:
+            time.sleep(1)
+
+        # 🔹 Step 3: Get data (THIS IS THE FIX)
+        data = result.result
+
+        if data is None or data.data_array is None:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid execution_id"
+                detail="No data found for execution_id"
             )
 
-        # Step 5: Extract values
-        row = result.result.data_array[0]
+        row = data.data_array[0]
         query_file = row[0]
         output_path = row[1]
 
-        # Step 6: Trigger job
+        # 🔹 Step 4: Trigger job
         run = w.jobs.run_now(
             job_id=JOB_ID,
             notebook_params={
