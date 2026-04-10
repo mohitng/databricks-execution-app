@@ -1,3 +1,4 @@
 fastapi
-uvicorn
+uvicorn[standard]
 databricks-sdk
+pydantic
