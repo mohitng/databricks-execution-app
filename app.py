@@ -7,18 +7,15 @@ WAREHOUSE_ID = "76928b72e59d53fa"
 JOB_ID = 1112246778869928
 
 
-# Request model
 class ExecuteRequest(BaseModel):
     execution_id: str
 
 
-# ✅ Health endpoint
 @app.get("/")
 def home():
     return {"message": "Hello, Welcome to Mohit's Org Application 🚀"}
 
 
-# ✅ Execute API
 @app.post("/execute")
 def execute(req: ExecuteRequest):
     from databricks.sdk import WorkspaceClient
@@ -27,53 +24,49 @@ def execute(req: ExecuteRequest):
     w = WorkspaceClient()
     execution_id = req.execution_id
 
-    # 🔒 Basic SQL safety
     safe_execution_id = execution_id.replace("'", "''")
 
-    # ✅ IMPORTANT: set catalog + schema explicitly
+    # ✅ FIX: fully qualified table name (NO USE statements)
     query = f"""
-    USE CATALOG app_catalog;
-    USE SCHEMA app_schema;
-
     SELECT query_file, output_path
-    FROM execution_metadata
+    FROM app_catalog.app_schema.execution_metadata
     WHERE execution_id = '{safe_execution_id}' AND is_active = true
     """
 
     try:
-        # 🔹 Step 1: Submit query
+        # Step 1: Submit query
         statement = w.statement_execution.execute_statement(
             warehouse_id=WAREHOUSE_ID,
             statement=query
         )
 
-        # 🔹 Step 2: Poll until completion
+        # Step 2: Poll until completion
         result = w.statement_execution.get_statement(statement.statement_id)
 
         while result.status.state in ["PENDING", "RUNNING"]:
             time.sleep(1)
             result = w.statement_execution.get_statement(statement.statement_id)
 
-        # 🔹 Step 3: Check final status
+        # Step 3: Check status
         if result.status.state != "SUCCEEDED":
             raise HTTPException(
                 status_code=500,
                 detail=f"Query failed: {result.status.error}"
             )
 
-        # 🔹 Step 4: Validate result
+        # Step 4: Validate result
         if not result.result or not result.result.data_array:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid execution_id"
             )
 
-        # 🔹 Step 5: Extract values
+        # Step 5: Extract values
         row = result.result.data_array[0]
         query_file = row[0]
         output_path = row[1]
 
-        # 🔹 Step 6: Trigger job
+        # Step 6: Trigger job
         run = w.jobs.run_now(
             job_id=JOB_ID,
             notebook_params={
@@ -93,7 +86,6 @@ def execute(req: ExecuteRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ✅ Entry point for Databricks Apps
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000)
