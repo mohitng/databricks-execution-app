@@ -3,26 +3,25 @@ from pydantic import BaseModel
 from databricks.sdk import WorkspaceClient
 
 app = FastAPI()
-w = WorkspaceClient()
 
 WAREHOUSE_ID = "76928b72e59d53fa"
 JOB_ID = 1112246778869928
 
 
-# Request model (automatic validation)
 class ExecuteRequest(BaseModel):
     execution_id: str
 
 
-# ✅ Welcome endpoint
 @app.get("/")
 def home():
     return {"message": "Hello, Welcome to Mohit's Org Application 🚀"}
 
 
-# ✅ Execute endpoint
 @app.post("/execute")
 def execute(req: ExecuteRequest):
+    # ✅ Initialize here (NOT at top)
+    w = WorkspaceClient()
+
     execution_id = req.execution_id
 
     query = f"""
